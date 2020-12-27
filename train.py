@@ -2,10 +2,8 @@ import tensorflow_datasets as tfds
 import tensorflow as tf
 
 import time
-import numpy as np
 import matplotlib.pyplot as plt
-from attention import MultiHeadAttention
-from transformer_blocks import Transformer
+from models.transformer_ann import Transformer
 from utils import filter_max_length, create_masks, plot_attention_weights
 import constants
     

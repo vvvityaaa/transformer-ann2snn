@@ -50,6 +50,7 @@ def filter_max_length(x, y, max_length=constants.MAX_LENGTH):
   return tf.logical_and(tf.size(x) <= max_length,
                         tf.size(y) <= max_length)
 
+
 def create_masks(inp, tar):
     # Encoder padding mask
     enc_padding_mask = create_padding_mask(inp)
@@ -98,3 +99,14 @@ def plot_attention_weights(attention, sentence, result, layer, tokenizer_pt, tok
 
     plt.tight_layout()
     plt.show()
+
+
+def spikalize_img(image, label):
+
+    '''
+    Transform image to spikes. Spike with poisson distributed rate proportional to pixel brightness.
+    '''
+
+    flattened = tf.reshape(image, [28*28])
+    rand = tf.random.uniform(shape=[1, 28*28])
+    return tf.cast(flattened/255*2 > rand, tf.float32), label
