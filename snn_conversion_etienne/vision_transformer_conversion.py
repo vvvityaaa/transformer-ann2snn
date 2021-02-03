@@ -6,7 +6,6 @@ from tensorflow.keras.layers import (
     LayerNormalization,
     RNN
 )
-from tensorflow.keras.layers.experimental.preprocessing import Rescaling
 import numpy as np
 from spiking_models import DenseRNN, SpikingReLU, SpikingSigmoid, SpikingTanh, Accumulate
 import keras
@@ -91,7 +90,7 @@ class TransformerBlock(tf.keras.layers.Layer):
 
 class SpikingMultiHeadSelfAttention(tf.keras.layers.Layer):
     def __init__(self, embed_dim, num_heads=8):
-        super(MultiHeadSelfAttention, self).__init__()
+        super(SpikingMultiHeadSelfAttention, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         if embed_dim % num_heads != 0:
@@ -138,7 +137,7 @@ class SpikingMultiHeadSelfAttention(tf.keras.layers.Layer):
 
 class SpikingTransformerBlock(tf.keras.layers.Layer):
     def __init__(self, embed_dim, num_heads, mlp_dim, dropout=0.1):
-        super(TransformerBlock, self).__init__()
+        super(SpikingTransformerBlock, self).__init__()
         self.att = SpikingMultiHeadSelfAttention(embed_dim, num_heads)
         self.mlp = tf.keras.Sequential(
             [
@@ -171,10 +170,10 @@ def convert(model, weights, x_test, y_test, d_model, num_heads, mlp_dim, dropout
     for layer in model.layers:
         if isinstance(layer, tf.keras.layers.InputLayer):
             print("Input Layer")
-            inputs = tf.keras.Input(shape=(1, model.layers[0].input_shape[0][1]), batch_size=y_test.shape[0])
+            inputs = tf.keras.Input(shape=(1, model.layers[0].input_shape[0][1], model.layers[0].input_shape[0][1]), batch_size=y_test.shape[0])
             x = inputs
         elif isinstance(layer, tf.keras.layers.Dense):
-            x = tf.keras.layers.Dense(layer.output_shape[1])(x)
+            x = tf.keras.layers.Dense(layer.output_shape[2])(x)
             # x = tf.keras.layers.RNN(DenseRNN(layer.output_shape[1]), return_sequences=True, return_state=False, stateful=True)(x)
             if layer.activation.__name__ == 'linear':
                 print("Dense Layer w/o activation")
@@ -202,7 +201,18 @@ def convert(model, weights, x_test, y_test, d_model, num_heads, mlp_dim, dropout
             x = SpikingTransformerBlock(d_model, num_heads, mlp_dim, dropout)(x)
         else:
             print("[Info] Layer type ", layer, "not implemented, so we use it's keras version")
-            x = layer(x)
+            if layer.name == 'tf.image.extract_patches':
+                x = layer(x,
+                          [1, patch_size, patch_size, 1],
+                          [1, patch_size, patch_size, 1],
+                          [1, 1, 1, 1],
+                          "VALID")
+            elif layer.name == 'tf.reshape':
+                x = layer(x, [batch_size, -1, patch_dim])
+            elif layer.name == 'tf.concat':
+                x = layer(x, [batch_size, -1, patch_dim])
+            else:
+                x = layer(x)
     spiking = tf.keras.models.Model(inputs=inputs, outputs=x)
     print("-"*32 + "\n")
 
@@ -215,7 +225,60 @@ def convert(model, weights, x_test, y_test, d_model, num_heads, mlp_dim, dropout
     return spiking
 
 
-def extract_patches(images, patch_dim, patch_size):
+def convert_fixated_ann(weights, input_shape):
+    inp = tf.keras.layers.Input(shape=(input_shape))
+
+    #  VISION PART
+    # patching, positional embedding and class embedding
+    patches = tf.image.extract_patches(
+        images=inp,
+        sizes=[1, patch_size, patch_size, 1],
+        strides=[1, patch_size, patch_size, 1],
+        rates=[1, 1, 1, 1],
+        padding="VALID",
+    )
+    patches = tf.reshape(patches, [batch_size, -1, patch_dim])
+
+    x = Dense(d_model)(patches)
+
+    pos_emb = tf.Variable(initial_value=tf.random.uniform(shape=(1, num_patches + 1, d_model)),
+                          name="pos_emb", validate_shape=(1, num_patches + 1, d_model), trainable=True)
+    class_emb = tf.Variable(initial_value=tf.random.uniform(shape=(1, 1, d_model)), name="class_emb",
+                            validate_shape=(1, 1, d_model), trainable=True)
+
+    class_emb = tf.broadcast_to(class_emb, [batch_size, 1, d_model])
+
+    x = tf.concat([class_emb, x], axis=1)
+    x = x + pos_emb
+
+    # Transformer Blocks
+    x = SpikingTransformerBlock(d_model, num_heads, mlp_dim, dropout)(x)
+
+    #  MLP HEAD
+    x = Dense(mlp_dim)(x[:, 0])
+
+    x = tf.expand_dims(x, axis=1)
+    x = tf.keras.layers.RNN(SpikingReLU(mlp_dim), return_sequences=True, return_state=False, stateful=True)(x)
+    x = Dense(num_classes)(x)
+    x = tf.squeeze(x, axis=1)
+
+    #  Model compilation and training
+    model = tf.keras.models.Model(inputs=inp, outputs=x)
+
+    print("-" * 32 + "\n")
+    model.compile(
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        optimizer="adam",
+        metrics=["sparse_categorical_accuracy"],
+    )
+    model.set_weights(weights)
+    return model
+
+
+def extract_patches(images):
+    channels = 1
+    patch_size = 4
+    patch_dim = channels * patch_size ** 2
     batch_size = tf.shape(images)[0]
     patches = tf.image.extract_patches(
         images=images,
@@ -237,7 +300,8 @@ def get_normalized_weights(model, x_test, percentile=100):
                 max_activation = np.percentile(activation, percentile)
         elif isinstance(layer, tf.keras.layers.Dense):
             if layer.activation.__name__ == 'relu':
-                activation = tf.keras.Model(inputs=model.inputs, outputs=layer.output)(x_test).numpy()
+                # TODO: adapt to use all dataset and not only one batch of data
+                activation = tf.keras.Model(inputs=model.inputs, outputs=layer.output)(x_test[0:50]).numpy()
                 if np.percentile(activation, percentile) > max_activation:
                     max_activation = np.percentile(activation, percentile)
 
@@ -252,7 +316,7 @@ def get_normalized_weights(model, x_test, percentile=100):
 
 def evaluate_conversion(converted_model, original_model, x_test, y_test, testacc, timesteps=50):
     for i in range(1, timesteps+1):
-        _, acc = converted_model.evaluate(x_test, y_test, batch_size=y_test.shape[0], verbose=0)
+        _, acc = converted_model.evaluate(x_test, y_test, batch_size=50)
         print(
             "Timesteps", str(i) + "/" + str(timesteps) + " -",
             "acc spiking (orig): %.2f%% (%.2f%%)" % (acc*100, testacc*100),
@@ -260,6 +324,8 @@ def evaluate_conversion(converted_model, original_model, x_test, y_test, testacc
 
 
 if __name__ == "__main__":
+    physical_devices = tf.config.list_physical_devices('GPU')
+
     # Variable definition
     logdir = "logs"
     image_size = 28
@@ -284,8 +350,8 @@ if __name__ == "__main__":
 
     # Normalize input so we can train ANN with it.
     # Will be converted back to integers for SNN layer.
-    # x_train = x_train / 255
-    # x_test = x_test / 255
+    x_train = x_train / 255
+    x_test = x_test / 255
 
     # Add a channel dimension.
     axis = 1 if keras.backend.image_data_format() == 'channels_first' else -1
@@ -293,18 +359,25 @@ if __name__ == "__main__":
     x_test = np.expand_dims(x_test, axis)
 
     # One-hot encode target vectors.
-    y_train = to_categorical(y_train, 10)
-    y_test = to_categorical(y_test, 10)
+    # y_train = to_categorical(y_train, 10)
+    # y_test = to_categorical(y_test, 10)
 
     # Model
     input_shape = x_train.shape[1:]
 
     inp = tf.keras.layers.Input(shape=(input_shape))
-    x = Rescaling(1.0 / 255)(inp)
 
     #  VISION PART
     # patching, positional embedding and class embedding
-    patches = extract_patches(x, patch_dim, patch_size)
+    patches = tf.image.extract_patches(
+        images=inp,
+        sizes=[1, patch_size, patch_size, 1],
+        strides=[1, patch_size, patch_size, 1],
+        rates=[1, 1, 1, 1],
+        padding="VALID",
+    )
+    patches = tf.reshape(patches, [batch_size, -1, patch_dim])
+
     x = Dense(d_model)(patches)
 
     pos_emb = tf.Variable(initial_value=tf.random.uniform(shape=(1, num_patches + 1, d_model)),
@@ -323,30 +396,33 @@ if __name__ == "__main__":
     #  MLP HEAD
     x = Dense(mlp_dim, activation=tf.nn.relu)(x[:, 0])
     x = Dense(num_classes)(x)
-
     #  Model compilation and training
     model = tf.keras.models.Model(inputs=inp, outputs=x)
 
     model.compile(
-        loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         optimizer="adam",
-        metrics=["accuracy"],
+        metrics=["sparse_categorical_accuracy"],
     )
 
     model.fit(x=x_train, y=y_train, batch_size=batch_size, epochs=1, validation_data=(x_test, y_test))
 
-    ### =================== CONVERSION ========================
+    print(model.summary())
+
+    print('=================== CONVERSION ========================')
     _, testacc = model.evaluate(x_test, y_test, batch_size=batch_size, verbose=0)
     weights = get_normalized_weights(model, x_train, percentile=85)
 
     ##################################################
     # Preprocessing for RNN
-    x_train = np.expand_dims(x_train, axis=1)  # (60000, 784) -> (60000, 1, 784)
-    x_test = np.expand_dims(x_test, axis=1)
+    # x_train = np.expand_dims(x_train, axis=1)  # (60000, 784) -> (60000, 1, 784)
+    # x_test = np.expand_dims(x_test, axis=1)
     # x_rnn = np.tile(x_train, (1, 1, 1))
     # y_rnn = y_train  # np.tile(x_test, (1, timesteps, 1))
 
     ##################################################
     # Conversion to spiking model
-    snn = convert(model, weights, x_test, y_test, d_model, num_heads, mlp_dim, dropout)
+    # snn = convert(model, weights, x_test, y_test, d_model, num_heads, mlp_dim, dropout)
+    snn = convert_fixated_ann(weights, input_shape)
+    print(snn.summary())
     evaluate_conversion(snn, model, x_test, y_test, testacc, timesteps=50)
