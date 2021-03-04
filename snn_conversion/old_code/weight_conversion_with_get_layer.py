@@ -30,7 +30,8 @@ def weight_conversion_model(weights, bias):
                 input_sum += tf.math.maximum(0, converted_bias[l][o])
             max_pos_input = tf.math.maximum(max_pos_input, input_sum)
 
-        # get the maximum weight in the layer, in case all weights are negative, max_pos_input would be zero, so we use the max weight to rescale instead
+        # get the maximum weight in the layer, in case all weights are negative, max_pos_input would be zero, so we
+        # use the max weight to rescale instead
         max_wt = tf.math.reduce_max(converted_weights[l])
         if converted_bias is not None and converted_bias[l] is not None:
             max_bias = tf.math.reduce_max(converted_bias[l])
@@ -51,8 +52,8 @@ def weight_conversion_robust_and_data_based(weights, bias, model, data, normaliz
                                             ppercentile=0.99):
 
     """
-    Two methods proposed by Diehl et al and Rueckauer et al. Both methods are data-based, so they use weights and activations to
-    find the best scaling factor.
+    Two methods proposed by Diehl et al and Rueckauer et al. Both methods are data-based, so they use weights and
+    activations to find the best scaling factor.
     :param weights: weights of the network.
     :param bias: bias of the network.
     :param model: ann model.

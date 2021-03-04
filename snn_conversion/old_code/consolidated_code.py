@@ -12,7 +12,6 @@ def convert(model, weights, x_test, y_test):
             x = inputs
         elif isinstance(layer, tf.keras.layers.Dense):
             x = tf.keras.layers.Dense(layer.output_shape[1])(x)
-            # x = tf.keras.layers.RNN(DenseRNN(layer.output_shape[1]), return_sequences=True, return_state=False, stateful=True)(x)
             if layer.activation.__name__ == 'linear':
                 print("Dense Layer w/o activation")
                 pass
@@ -72,6 +71,42 @@ def get_normalized_weights(model, x_test, percentile=100):
     return weights
 
 
+def robust_weight_normalization(model, x_test, ppercentile=1):
+    prev_factor = 1
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.layers.ReLU) or (isinstance(layer, tf.keras.layers.Dense) and
+                                                       layer.activation.__name__ == 'relu'):
+
+            # computing maximal activation, taking a ppercentile of it
+            activation = tf.keras.Model(inputs=model.inputs, outputs=layer.output)(x_test).numpy()
+            activation = tf.math.reduce_max(activation, axis=0)
+            activation = tf.sort(activation)
+            max_act = activation[int(ppercentile * (len(activation) - 1))]
+
+            # computing maximum weight and bias
+            weights, bias = layer.get_weights()
+            max_wt = max(0, tf.math.reduce_max(weights))
+            max_bias = tf.math.reduce_max(bias)
+
+            # getting a value, which is greater, maximum weight or maximum bias
+            max_wt_bias = max(max_wt, max_bias)
+
+            # scale factor is taken as a greater value of activation or weights/bias
+            scale_factor = max(max_act, max_wt_bias)
+            # factor is rescaled according to the factor for the previous layer
+            applied_factor = scale_factor / prev_factor
+
+            weights = weights / applied_factor
+            bias = bias / scale_factor
+
+            prev_factor = scale_factor
+            layer.set_weights([weights, bias])
+            print(f"Scale factor for layer {layer}")
+            print(f"{applied_factor}")
+
+    return model
+
+
 def evaluate_conversion(converted_model, original_model, x_test, y_test, testacc, timesteps=50):
     for i in range(1, timesteps+1):
         _, acc = converted_model.evaluate(x_test, y_test, batch_size=y_test.shape[0], verbose=0)
@@ -81,18 +116,10 @@ def evaluate_conversion(converted_model, original_model, x_test, y_test, testacc
             "- conv loss: %+.2f%%" % ((-(1 - acc/testacc)*100)))
 
 
-tf.random.set_seed(1234)
-batch_size=512
-epochs = 5
-act='relu'
-
-
 def create_ann():
     inputs = tf.keras.Input(shape=(784,))
     x = tf.keras.layers.Dense(500, activation=act)(inputs)
-    #x = tf.keras.layers.ReLU()(x)  # max_value=1
     x = tf.keras.layers.Dense(100, activation=act)(x)
-    #x = tf.keras.layers.Activation(tf.nn.relu)(x)  # not implemented yet
     x = tf.keras.layers.Dense(10, activation=act)(x)
     x = tf.keras.layers.Softmax()(x)
     ann = tf.keras.Model(inputs=inputs, outputs=x)
@@ -111,6 +138,10 @@ def create_ann():
 
 
 if __name__ == "__main__":
+    tf.random.set_seed(1234)
+    batch_size = 512
+    epochs = 5
+    act = 'relu'
     ##################################################
     # Import Data
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
@@ -123,14 +154,13 @@ if __name__ == "__main__":
 
     _, testacc = ann.evaluate(x_test, y_test, batch_size=batch_size, verbose=0)
     #weights = ann.get_weights()
-    weights = get_normalized_weights(ann, x_train, percentile=85)
-
+    # weights = get_normalized_weights(ann, x_train, percentile=85)
+    model_normalized = robust_weight_normalization(ann, x_train)
+    weights = model_normalized.get_weights()
     ##################################################
     # Preprocessing for RNN
     x_train = np.expand_dims(x_train, axis=1)  # (60000, 784) -> (60000, 1, 784)
     x_test = np.expand_dims(x_test, axis=1)
-    #x_rnn = np.tile(x_train, (1, 1, 1))
-    #y_rnn = y_train  # np.tile(x_test, (1, timesteps, 1))
 
     ##################################################
     # Conversion to spiking model
