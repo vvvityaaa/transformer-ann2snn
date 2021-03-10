@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from multi_head_attention_part import multi_head_self_attention
+from multi_head_self_attention import multi_head_self_attention
 from spiking_models import SpikingReLU, Accumulate
 from tensorflow.keras.utils import to_categorical
 from operations_layers import SqueezeLayer, ExpandLayer, Tokpos

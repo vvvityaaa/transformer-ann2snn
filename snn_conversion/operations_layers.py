@@ -3,7 +3,12 @@ import numpy as np
 
 
 class SqueezeLayer(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
+
+    """
+    Layer that encapsulates a squeezing operation for the axis 1.
+    """
+
+    def __init__(self):
         super(SqueezeLayer, self).__init__()
 
     def call(self, inputs):
@@ -11,7 +16,11 @@ class SqueezeLayer(tf.keras.layers.Layer):
 
 
 class ExpandLayer(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
+    """
+    Layer that encapsulates expand operation for the axis 1.
+    """
+
+    def __init__(self):
         super(ExpandLayer, self).__init__()
 
     def call(self, inputs):
@@ -19,6 +28,12 @@ class ExpandLayer(tf.keras.layers.Layer):
 
 
 class Tokpos(tf.keras.layers.Layer):
+
+    """
+    Positional and Token embedding for NLP Transformer. Positional embedding is created as an embedding over a range
+    from 0 to the max length.
+    """
+
     def __init__(self, maxlen, vocab_size, embed_dim):
         super(Tokpos, self).__init__()
         self.maxlen = maxlen
@@ -35,7 +50,7 @@ class Tokpos(tf.keras.layers.Layer):
 
 
 class Tokposangles(tf.keras.layers.Layer):
-    def __init__(self, maxlen, vocab_size, embed_dim, **kwargs):
+    def __init__(self, maxlen, vocab_size, embed_dim):
         super(Tokposangles, self).__init__()
         self.maxlen = maxlen
         self.vocab_size = vocab_size
@@ -66,7 +81,12 @@ class Tokposangles(tf.keras.layers.Layer):
 
 
 class MatMulLayer(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
+
+    """
+    Layer for multiplication of inputs.
+    """
+
+    def __init__(self):
         super(MatMulLayer, self).__init__()
 
     def call(self, inputs):
@@ -74,7 +94,7 @@ class MatMulLayer(tf.keras.layers.Layer):
 
 
 class MatMulLayerTranspose(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
+    def __init__(self):
         super(MatMulLayerTranspose, self).__init__()
 
     def call(self, inputs):
@@ -82,7 +102,7 @@ class MatMulLayerTranspose(tf.keras.layers.Layer):
 
 
 class TransposeLayer(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
+    def __init__(self):
         super(TransposeLayer, self).__init__()
 
     def call(self, inputs):
@@ -90,7 +110,7 @@ class TransposeLayer(tf.keras.layers.Layer):
 
 
 class ExtractPatchesLayer(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
+    def __init__(self):
         super(ExtractPatchesLayer, self).__init__()
         self.patch_size = 4
         self.patch_dim = 16
@@ -112,7 +132,7 @@ class ExtractPatchesLayer(tf.keras.layers.Layer):
 
 
 class PositionalEncodingLayer(tf.keras.layers.Layer):
-    def __init__(self, d_model, num_patches, **kwargs):
+    def __init__(self, d_model, num_patches):
         super(PositionalEncodingLayer, self).__init__()
         self.num_patches = num_patches
         self.d_model = d_model

@@ -1,11 +1,11 @@
 import tensorflow as tf
 import numpy as np
-from multi_head_attention_part import multi_head_self_attention
+from multi_head_self_attention import multi_head_self_attention
 from spiking_models import SpikingReLU, Accumulate
 from tensorflow.keras.utils import to_categorical
 from operations_layers import SqueezeLayer, ExpandLayer, Tokpos
 from weight_normalization import robust_weight_normalization
-from utils import evaluate_conversion
+from utils import evaluate_conversion, evaluate_conversion_and_save_data
 
 
 def create_ann_approved_version():
@@ -28,7 +28,8 @@ def create_ann_approved_version():
         out = tf.keras.layers.Dense(d_model)(out)
         out = tf.keras.layers.Add()([out, add])
 
-    x = tf.keras.layers.Flatten()(out)
+    # x = tf.keras.layers.Flatten()(out)
+    x = tf.keras.layers.GlobalAveragePooling1D()(out)
     x = tf.keras.layers.Dense(d_model, activation="relu")(x)
     x = tf.keras.layers.Dense(d_model)(x)
     x = tf.keras.layers.Dense(mlp_dim, activation="relu")(x)
@@ -82,7 +83,8 @@ def convert_tailored_approved_version(weights, y_test):
 
         out = tf.keras.layers.Add()([out, add])
 
-    x = tf.keras.layers.Flatten()(out)
+    x = tf.keras.layers.GlobalAveragePooling1D()(out)
+    # x = tf.keras.layers.Flatten()(out)
     x = ExpandLayer()(x)
     x = tf.keras.layers.Dense(d_model)(x)
     x = tf.keras.layers.RNN(SpikingReLU(d_model), return_sequences=True, return_state=False,
@@ -109,9 +111,11 @@ def convert_tailored_approved_version(weights, y_test):
 
 
 if __name__ == "__main__":
-    tf.random.set_seed(1234)
+    import sys
+    filename = sys.argv[1]
+    # tf.random.set_seed(1234)
     batch_size = 64
-    epochs = 1
+    epochs = 2
     vocab_size = 20000  # Only consider the top 20k words
     maxlen = 200  # Only consider the first 200 words of each movie review
     d_model = 32
@@ -120,6 +124,7 @@ if __name__ == "__main__":
     l = maxlen // num_heads
     num_multi_head_attention_modules = 2
     num_classes = 2
+    timesteps = 50
 
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.imdb.load_data(num_words=vocab_size)
     y_train = to_categorical(y_train, 2)
@@ -128,9 +133,12 @@ if __name__ == "__main__":
     x_train = tf.keras.preprocessing.sequence.pad_sequences(x_train, maxlen=maxlen)
     x_test = tf.keras.preprocessing.sequence.pad_sequences(x_test, maxlen=maxlen)
 
+    x_train_expanded = np.expand_dims(x_train, axis=1)
+    x_test_expanded = np.expand_dims(x_test, axis=1)
+
     # Analog model
     ann = create_ann_approved_version()
-    print(ann.summary())
+    # print(ann.summary())
 
     _, testacc = ann.evaluate(x_test, y_test, batch_size=batch_size, verbose=0)
     # weights = ann.get_weights()
@@ -139,13 +147,22 @@ if __name__ == "__main__":
     model_normalized = robust_weight_normalization(ann, x_test, ppercentile=0.99)
     weights = model_normalized.get_weights()
 
-    ##################################################
-    # Preprocessing for RNN
-    x_train = np.expand_dims(x_train, axis=1)
-    x_test = np.expand_dims(x_test, axis=1)
-
-    ##################################################
-    # Conversion to spiking model
-    # snn = convert(ann, weights, x_test, y_test)
+    # for i in range(1, 51):
+    #
+    #     ##################################################
+    #     # Conversion to spiking model
+    #     # snn = convert(ann, weights, x_test, y_test)
+    #     snn = convert_tailored_approved_version(weights, y_test)
+    #     # evaluate_conversion(snn, x_test, y_test, testacc, y_test.shape[0], timesteps=30)
+    #     accuracy = evaluate_conversion_and_save_data(snn, x_test_expanded, y_test, testacc, y_test.shape[0],  timesteps)
+    #     accuracy.append(testacc)
+    #     with open('conversion_nlp_v2_acc/{}.npz'.format(i), 'wb') as f:
+    #         np.save(f, accuracy)
+    #         f.close()
     snn = convert_tailored_approved_version(weights, y_test)
-    evaluate_conversion(snn, x_test, y_test, testacc, timesteps=30)
+    # evaluate_conversion(snn, x_test, y_test, testacc, y_test.shape[0], timesteps=30)
+    accuracy = evaluate_conversion_and_save_data(snn, x_test_expanded, y_test, testacc, y_test.shape[0],  timesteps)
+    accuracy.append(testacc)
+    with open('conversion_nlp_v2_acc/{}.npz'.format(filename), 'wb') as f:
+        np.save(f, accuracy)
+        f.close()

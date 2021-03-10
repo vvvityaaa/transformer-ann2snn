@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow_addons as tfa
 import numpy as np
 import keras
 from spiking_models import SpikingReLU, Accumulate
@@ -7,8 +8,8 @@ from tensorflow.keras.datasets import mnist
 from operations_layers import SqueezeLayer, ExpandLayer, MatMulLayer, MatMulLayerTranspose, TransposeLayer, \
     ExtractPatchesLayer, PositionalEncodingLayer
 from weight_normalization import robust_weight_normalization
-from utils import evaluate_conversion
-from multi_head_attention_part import multi_head_self_attention
+from utils import evaluate_conversion, evaluate_conversion_and_save_data
+from multi_head_self_attention import multi_head_self_attention
 
 
 def create_and_train_ann():
@@ -117,7 +118,9 @@ def create_and_train_snn(weights, y_test):
 
 
 if __name__ == "__main__":
-    tf.random.set_seed(1238)
+    # tf.random.set_seed(1238)
+    import sys
+    filename = sys.argv[1]
     batch_size = 64
     epochs = 2
     d_model = 64
@@ -132,6 +135,7 @@ if __name__ == "__main__":
     patch_dim = channels * patch_size ** 2
     projection_dim = d_model // num_heads
     num_multi_head_attention_modules = 4
+    timesteps = 50
 
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
@@ -160,8 +164,8 @@ if __name__ == "__main__":
     # Preprocessing for RNN
     # Add a channel dimension.
     axis = 1 if keras.backend.image_data_format() == 'channels_first' else -1
-    x_train = np.expand_dims(x_train, axis)
-    x_test = np.expand_dims(x_test, axis)
+    x_train_expanded = np.expand_dims(x_train, axis)
+    x_test_expanded = np.expand_dims(x_test, axis)
 
     ##################################################
     # Conversion to spiking model
@@ -169,4 +173,10 @@ if __name__ == "__main__":
     print("-" * 32 + "\n")
     print("Simulating network")
     snn = create_and_train_snn(weights, y_test)
-    evaluate_conversion(snn, x_test, y_test, testacc, timesteps=50)
+    # evaluate_conversion(snn, x_test, y_test, testacc, timesteps)
+
+    accuracy = evaluate_conversion_and_save_data(snn, x_test_expanded, y_test, testacc, y_test.shape[0], timesteps)
+    accuracy.append(testacc)
+    with open('conversion_vit_v2_acc/{}.npz'.format(filename), 'wb') as f:
+        np.save(f, accuracy)
+        f.close()
