@@ -1,4 +1,8 @@
 def evaluate_conversion(converted_model, x_test, y_test, testacc, batch_size, timesteps=50):
+    """
+    Utility function for simple evaluation of the simulation accuracy.
+    """
+
     for i in range(1, timesteps + 1):
         _, acc = converted_model.evaluate(x_test, y_test, batch_size=batch_size, verbose=0)
         print(
