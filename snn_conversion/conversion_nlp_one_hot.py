@@ -3,12 +3,12 @@ import numpy as np
 from multi_head_self_attention import multi_head_self_attention
 from spiking_models import SpikingReLU, Accumulate
 from tensorflow.keras.utils import to_categorical
-from operations_layers import SqueezeLayer, ExpandLayer, Tokpos
+from operations_layers import SqueezeLayer, ExpandLayer
 from weight_normalization import robust_weight_normalization
 from utils import evaluate_conversion
 
 
-def create_ann_approved_version():
+def create_and_train_ann():
 
     """
     Definition and training of artificial neural network with defined architecture in a keras functional API way.
@@ -19,7 +19,7 @@ def create_ann_approved_version():
     inputs = tf.keras.layers.Input(shape=(maxlen, vocab_size))
     x = tf.keras.layers.Dense(d_model)(inputs)
     out = inputs
-    for i in range(num_multi_head_attention_modules):
+    for _ in range(num_multi_head_attention_modules):
         out = multi_head_self_attention(out, num_heads, d_model, d_model)
         x = tf.keras.layers.Reshape([-1, d_model])(x)
         add = tf.keras.layers.Add()([out, x])
@@ -32,7 +32,7 @@ def create_ann_approved_version():
     x = tf.keras.layers.Dense(d_model, activation="relu")(x)
     x = tf.keras.layers.Dense(d_model)(x)
     x = tf.keras.layers.Dense(mlp_dim, activation="relu")(x)
-    # --------------------------------------------------
+
     x = tf.keras.layers.Dense(num_classes)(x)
     x = tf.keras.layers.Softmax()(x)
 
@@ -52,7 +52,7 @@ def create_ann_approved_version():
     return ann
 
 
-def convert_tailored_approved_version(weights, y_test):
+def create_and_train_snn(weights, y_test):
 
     """
     Definition of spiking neural network. It copies ann network up to the dense layers with relu activation functions,
@@ -66,7 +66,7 @@ def convert_tailored_approved_version(weights, y_test):
     inputs = tf.keras.layers.Input(shape=(maxlen, vocab_size), batch_size=y_test.shape[0])
     x = tf.keras.layers.Dense(d_model)(inputs)
     out = inputs
-    for i in range(num_multi_head_attention_modules):
+    for _ in range(num_multi_head_attention_modules):
         out = multi_head_self_attention(out, num_heads, d_model, d_model)
         x = tf.keras.layers.Reshape([-1, d_model])(x)
         add = tf.keras.layers.Add()([out, x])
@@ -91,7 +91,7 @@ def convert_tailored_approved_version(weights, y_test):
     x = tf.keras.layers.Dense(mlp_dim)(x)
     x = tf.keras.layers.RNN(SpikingReLU(mlp_dim), return_sequences=True, return_state=False,
                             stateful=True)(x)
-    # --------------------------------------------------
+
     x = tf.keras.layers.Dense(num_classes)(x)
 
     x = tf.keras.layers.RNN(Accumulate(num_classes), return_sequences=True, return_state=False, stateful=True)(x)
@@ -111,7 +111,7 @@ def convert_tailored_approved_version(weights, y_test):
 if __name__ == "__main__":
     tf.random.set_seed(1234)
 
-    vocab_size = 500
+    vocab_size = 250
     maxlen = 50
 
     batch_size = 64
@@ -122,7 +122,6 @@ if __name__ == "__main__":
     l = maxlen // num_heads
     num_multi_head_attention_modules = 2
     num_classes = 2
-
 
     # Load the data
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.imdb.load_data(num_words=vocab_size)
@@ -137,17 +136,14 @@ if __name__ == "__main__":
     x_test = tf.one_hot(x_test, vocab_size, axis=-1)
 
     # Analog model
-    ann = create_ann_approved_version()
+    ann = create_and_train_ann()
     print(ann.summary())
 
     _, testacc = ann.evaluate(x_test, y_test, batch_size=batch_size, verbose=0)
-    # weights = ann.get_weights()
-    # weights = get_normalized_weights(ann, x_train, percentile=85)
 
     model_normalized = robust_weight_normalization(ann, x_test, ppercentile=0.99)
     weights = model_normalized.get_weights()
 
-    ##################################################
     # Conversion to spiking model
-    snn = convert_tailored_approved_version(weights, y_test)
-    evaluate_conversion(snn, x_test, y_test, testacc, timesteps=30)
+    snn = create_and_train_snn(weights, y_test)
+    evaluate_conversion(snn, x_test, y_test, testacc, batch_size=y_test.shape[0], timesteps=30)

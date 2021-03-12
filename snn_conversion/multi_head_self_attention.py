@@ -21,7 +21,6 @@ def multi_head_self_attention(x, num_heads, projection_dim, d_model):
        Sum of ``values``.
     """
 
-    # ---------------------- Multi Head Self Attention ---------------------
     v2 = tf.keras.layers.Dense(d_model)(x)
     q2 = tf.keras.layers.Dense(d_model)(x)
     k2 = tf.keras.layers.Dense(d_model)(x)
@@ -34,7 +33,6 @@ def multi_head_self_attention(x, num_heads, projection_dim, d_model):
     k = tf.keras.layers.Reshape([-1, num_heads, projection_dim])(k2)
     k = TransposeLayer()(k)
 
-    # ------------------- Scaled dot-product attention ----------------------
     # QK^T
     att = MatMulLayerTranspose()([q, k])
     # softmax(QK^T)
@@ -45,6 +43,5 @@ def multi_head_self_attention(x, num_heads, projection_dim, d_model):
     att = TransposeLayer()(att)
     att = tf.keras.layers.Reshape([-1, d_model])(att)
     att = tf.keras.layers.Dense(d_model)(att)
-    # ------------------- End of Multi Head Self Attention -------------------
 
     return att

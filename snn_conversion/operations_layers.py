@@ -94,6 +94,11 @@ class MatMulLayer(tf.keras.layers.Layer):
 
 
 class MatMulLayerTranspose(tf.keras.layers.Layer):
+
+    """
+    Layer for multiplication of inputs, where the second operand is transposed.
+    """
+
     def __init__(self):
         super(MatMulLayerTranspose, self).__init__()
 
@@ -102,6 +107,11 @@ class MatMulLayerTranspose(tf.keras.layers.Layer):
 
 
 class TransposeLayer(tf.keras.layers.Layer):
+
+    """
+    Permutation layer, which permutes 1st and 2nd dimensions.
+    """
+
     def __init__(self):
         super(TransposeLayer, self).__init__()
 
@@ -110,6 +120,11 @@ class TransposeLayer(tf.keras.layers.Layer):
 
 
 class ExtractPatchesLayer(tf.keras.layers.Layer):
+
+    """
+    Encapsulates logic for extraction of image patches.
+    """
+
     def __init__(self):
         super(ExtractPatchesLayer, self).__init__()
         self.patch_size = 4
@@ -132,6 +147,11 @@ class ExtractPatchesLayer(tf.keras.layers.Layer):
 
 
 class PositionalEncodingLayer(tf.keras.layers.Layer):
+
+    """
+    Adds class embedding and positional embedding to the input.
+    """
+
     def __init__(self, d_model, num_patches):
         super(PositionalEncodingLayer, self).__init__()
         self.num_patches = num_patches

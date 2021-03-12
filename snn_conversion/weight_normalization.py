@@ -2,13 +2,19 @@ import tensorflow as tf
 
 
 def robust_weight_normalization(model, x_test, ppercentile=1):
+
+    """
+    Robust weight normalization proposed by Rueckauer et al
+    """
+
     x_test = x_test[::10]
     prev_factor = 1
     for layer in model.layers:
         if isinstance(layer, tf.keras.layers.ReLU) or (isinstance(layer, tf.keras.layers.Dense) and
                                                        layer.activation.__name__ == 'relu'):
             activation = tf.keras.Model(inputs=model.inputs, outputs=layer.output)(x_test).numpy()
-            for i in range(activation.ndim - 1):
+            # calculating max over different dimensions
+            for _ in range(activation.ndim - 1):
                 activation = tf.math.reduce_max(activation, axis=0)
             activation = tf.sort(activation)
             max_act = activation[int(ppercentile * (len(activation) - 1))]

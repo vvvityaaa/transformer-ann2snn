@@ -4,8 +4,7 @@ import keras
 from spiking_models import SpikingReLU, Accumulate
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.datasets import mnist
-from operations_layers import SqueezeLayer, ExpandLayer, MatMulLayer, MatMulLayerTranspose, TransposeLayer, \
-    ExtractPatchesLayer, PositionalEncodingLayer
+from operations_layers import SqueezeLayer, ExpandLayer, ExtractPatchesLayer, PositionalEncodingLayer
 from weight_normalization import robust_weight_normalization
 from utils import evaluate_conversion, evaluate_conversion_and_save_data
 from multi_head_self_attention import multi_head_self_attention
@@ -26,7 +25,7 @@ def create_and_train_ann():
     x = PositionalEncodingLayer(d_model, num_patches)(x)
 
     out = x
-    for i in range(num_multi_head_attention_modules):
+    for _ in range(num_multi_head_attention_modules):
         out = multi_head_self_attention(out, num_heads, projection_dim, d_model)
         x = tf.keras.layers.Reshape([-1, d_model])(x)
         add = tf.keras.layers.Add()([out, x])
@@ -78,7 +77,7 @@ def create_and_train_snn(weights, y_test):
     x = tf.keras.layers.Dense(d_model)(patches)
     x = PositionalEncodingLayer(d_model, num_patches)(x)
     out = x
-    for i in range(num_multi_head_attention_modules):
+    for _ in range(num_multi_head_attention_modules):
         out = multi_head_self_attention(out, num_heads, projection_dim, d_model)
         x = tf.keras.layers.Reshape([-1, d_model])(x)
         add = tf.keras.layers.Add()([out, x])
@@ -121,8 +120,6 @@ def create_and_train_snn(weights, y_test):
 
 if __name__ == "__main__":
     tf.random.set_seed(1238)
-    import sys
-    filename = "1"
     batch_size = 64
     epochs = 5
     d_model = 64
@@ -155,30 +152,20 @@ if __name__ == "__main__":
     print(ann.summary())
 
     _, testacc = ann.evaluate(x_test, y_test, batch_size=batch_size, verbose=0)
-    # weights = ann.get_weights()
-    # weights = get_normalized_weights(ann, x_train, percentile=85)
     print("-" * 32 + "\n")
     print("Normalizing weights")
     model_normalized = robust_weight_normalization(ann, x_test, ppercentile=0.99)
     weights = model_normalized.get_weights()
 
-    ##################################################
     # Preprocessing for RNN
     # Add a channel dimension.
     axis = 1 if keras.backend.image_data_format() == 'channels_first' else -1
     x_train_expanded = np.expand_dims(x_train, axis)
     x_test_expanded = np.expand_dims(x_test, axis)
 
-    ##################################################
     # Conversion to spiking model
     # snn = convert(ann, weights, x_test, y_test)
     print("-" * 32 + "\n")
     print("Simulating network")
     snn = create_and_train_snn(weights, y_test)
-    # evaluate_conversion(snn, x_test, y_test, testacc, timesteps)
-
-    accuracy = evaluate_conversion_and_save_data(snn, x_test_expanded, y_test, testacc, y_test.shape[0], timesteps)
-    accuracy.append(testacc)
-    with open('conversion_vit_original_acc/{}.npz'.format(filename), 'wb') as f:
-        np.save(f, accuracy)
-        f.close()
+    evaluate_conversion(snn, x_test_expanded, y_test, testacc, y_test.shape[0], timesteps)

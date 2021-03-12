@@ -8,7 +8,7 @@ from weight_normalization import robust_weight_normalization
 from utils import evaluate_conversion, evaluate_conversion_and_save_data
 
 
-def create_ann_approved_version():
+def create_and_train_ann():
 
     """
     Definition and training of artificial neural network with defined architecture in a keras functional API way.
@@ -19,21 +19,21 @@ def create_ann_approved_version():
     inputs = tf.keras.layers.Input(shape=(maxlen,))
     x = Tokpos(maxlen, vocab_size, d_model)(inputs)
     out = x
-    for i in range(num_multi_head_attention_modules):
+    for _ in range(num_multi_head_attention_modules):
         out = multi_head_self_attention(out, num_heads, d_model, d_model)
         x = tf.keras.layers.Reshape([-1, d_model])(x)
         add = tf.keras.layers.Add()([out, x])
+
         # feedforward mlp
         out = tf.keras.layers.Dense(mlp_dim, activation="relu")(add)
         out = tf.keras.layers.Dense(d_model)(out)
         out = tf.keras.layers.Add()([out, add])
 
-    # x = tf.keras.layers.Flatten()(out)
     x = tf.keras.layers.GlobalAveragePooling1D()(out)
     x = tf.keras.layers.Dense(d_model, activation="relu")(x)
     x = tf.keras.layers.Dense(d_model)(x)
     x = tf.keras.layers.Dense(mlp_dim, activation="relu")(x)
-    # --------------------------------------------------
+
     x = tf.keras.layers.Dense(num_classes)(x)
     x = tf.keras.layers.Softmax()(x)
 
@@ -53,7 +53,7 @@ def create_ann_approved_version():
     return ann
 
 
-def convert_tailored_approved_version(weights, y_test):
+def create_and_train_snn(weights, y_test):
 
     """
     Definition of spiking neural network. It copies ann network up to the dense layers with relu activation functions,
@@ -67,7 +67,7 @@ def convert_tailored_approved_version(weights, y_test):
     inputs = tf.keras.layers.Input(shape=(1, maxlen,), batch_size=y_test.shape[0])
     x = Tokpos(maxlen, vocab_size, d_model)(inputs)
     out = x
-    for i in range(num_multi_head_attention_modules):
+    for _ in range(num_multi_head_attention_modules):
         out = multi_head_self_attention(out, num_heads, d_model, d_model)
         x = tf.keras.layers.Reshape([-1, d_model])(x)
         add = tf.keras.layers.Add()([out, x])
@@ -84,7 +84,6 @@ def convert_tailored_approved_version(weights, y_test):
         out = tf.keras.layers.Add()([out, add])
 
     x = tf.keras.layers.GlobalAveragePooling1D()(out)
-    # x = tf.keras.layers.Flatten()(out)
     x = ExpandLayer()(x)
     x = tf.keras.layers.Dense(d_model)(x)
     x = tf.keras.layers.RNN(SpikingReLU(d_model), return_sequences=True, return_state=False,
@@ -93,7 +92,7 @@ def convert_tailored_approved_version(weights, y_test):
     x = tf.keras.layers.Dense(mlp_dim)(x)
     x = tf.keras.layers.RNN(SpikingReLU(mlp_dim), return_sequences=True, return_state=False,
                             stateful=True)(x)
-    # --------------------------------------------------
+
     x = tf.keras.layers.Dense(num_classes)(x)
 
     x = tf.keras.layers.RNN(Accumulate(num_classes), return_sequences=True, return_state=False, stateful=True)(x)
@@ -111,9 +110,7 @@ def convert_tailored_approved_version(weights, y_test):
 
 
 if __name__ == "__main__":
-    import sys
-    filename = sys.argv[1]
-    # tf.random.set_seed(1234)
+    tf.random.set_seed(1234)
     batch_size = 64
     epochs = 2
     vocab_size = 20000  # Only consider the top 20k words
@@ -137,32 +134,14 @@ if __name__ == "__main__":
     x_test_expanded = np.expand_dims(x_test, axis=1)
 
     # Analog model
-    ann = create_ann_approved_version()
-    # print(ann.summary())
+    ann = create_and_train_ann()
+    print(ann.summary())
 
     _, testacc = ann.evaluate(x_test, y_test, batch_size=batch_size, verbose=0)
     # weights = ann.get_weights()
-    # weights = get_normalized_weights(ann, x_train, percentile=85)
 
     model_normalized = robust_weight_normalization(ann, x_test, ppercentile=0.99)
     weights = model_normalized.get_weights()
 
-    # for i in range(1, 51):
-    #
-    #     ##################################################
-    #     # Conversion to spiking model
-    #     # snn = convert(ann, weights, x_test, y_test)
-    #     snn = convert_tailored_approved_version(weights, y_test)
-    #     # evaluate_conversion(snn, x_test, y_test, testacc, y_test.shape[0], timesteps=30)
-    #     accuracy = evaluate_conversion_and_save_data(snn, x_test_expanded, y_test, testacc, y_test.shape[0],  timesteps)
-    #     accuracy.append(testacc)
-    #     with open('conversion_nlp_v2_acc/{}.npz'.format(i), 'wb') as f:
-    #         np.save(f, accuracy)
-    #         f.close()
-    snn = convert_tailored_approved_version(weights, y_test)
-    # evaluate_conversion(snn, x_test, y_test, testacc, y_test.shape[0], timesteps=30)
-    accuracy = evaluate_conversion_and_save_data(snn, x_test_expanded, y_test, testacc, y_test.shape[0],  timesteps)
-    accuracy.append(testacc)
-    with open('conversion_nlp_v2_acc/{}.npz'.format(filename), 'wb') as f:
-        np.save(f, accuracy)
-        f.close()
+    snn = create_and_train_snn(weights, y_test)
+    evaluate_conversion(snn, x_test_expanded, y_test, testacc, y_test.shape[0], timesteps)
