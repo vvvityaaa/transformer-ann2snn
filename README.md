@@ -2,7 +2,7 @@
 
 ### Vision Transformer Conversion
 
-![vision_transformer_to_snn](images/Transformer.png)
+![vision_transformer_to_snn](assets/Transformer.png)
 
 ### Original Transformer Diagram
-![original_transformer](images/original-transformer.png)
+![original_transformer](assets/original-transformer.png)
