@@ -1,11 +1,13 @@
 ## Conversion of Analog Transformer Network to Spiking Transformer Network
 
-### NLP Transformer architecture
+In this work, we introduce the spiking architecture for self-attention-based Transformer networks obtained through weight
+ conversion using weight normalization tools proposed by Rueckauer et al. (2016).
 
-![spiking_transformer](assets/SpikingTransformer.png)
+### NLP Transformer architecture
+![spiking_transformer](gr_report/images/SpikingTransformer.png)
 
 ### Spiking Vision Transformer architecture
-![spiking_vision_transformer](assets/SpikingVisionTransformer.png)
+![spiking_vision_transformer](gr_report/images/SpikingVisionTransformer.png)
 
 ### References
 
@@ -26,7 +28,7 @@ Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Un- terth
 
 The paper is also available on arXiv: <https://arxiv.org/pdf/2010.11929.pdf>
 
-Conversio  of ANN-SNN::
+ANN-SNN conversion papers::
 
 Rueckauer, B., Lungu, I.-A., Hu, Y., and Pfeiffer, M. (2016). Theory and tools for the conversion of analog to spiking convolutional neural networks.
 
